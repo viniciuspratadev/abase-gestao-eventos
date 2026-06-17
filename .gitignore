@@ -1,0 +1,11 @@
+# Ignorar credenciais
+.env
+
+# Ignorar binários e executáveis
+*.class
+*.jar
+*.bat
+bin/
+
+# Ignorar configurações locais do editor
+.vscode/

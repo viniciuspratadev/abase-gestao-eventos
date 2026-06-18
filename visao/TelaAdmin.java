@@ -1,9 +1,6 @@
 package visao;
 
-import dao.UsuarioDAO;
-import dao.LocalEventoDAO;
-import dao.SiteVendasDAO;
-import dao.CategoriaDAO;
+import controle.AdminController;
 import modelo.LocalEvento;
 import modelo.SiteVendas;
 import modelo.Categoria;
@@ -13,21 +10,15 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.math.BigDecimal;
 
 public class TelaAdmin extends JFrame {
 
-    // DAOs
-    private UsuarioDAO usuarioDAO = new UsuarioDAO();
-    private LocalEventoDAO localDAO = new LocalEventoDAO();
-    private SiteVendasDAO siteDAO = new SiteVendasDAO();
-    private CategoriaDAO categoriaDAO = new CategoriaDAO();
+    // A tela comunica-se unicamente com o Controlador
+    private AdminController controller = new AdminController();
 
-    // Tabelas e Modelos
     private JTable tabelaPendentes, tabelaLocais, tabelaSites, tabelaCategorias;
     private DefaultTableModel modeloTabelaLocais, modeloTabelaSites, modeloTabelaCategorias;
 
-    // Campos de Entrada
     private JTextField txtIdLocal, txtNomeLocal, txtEndereco, txtLat, txtLon;
     private JTextField txtIdSite, txtNomeSite, txtUrlBase;
     private JTextField txtIdCateg, txtNomeCateg;
@@ -63,21 +54,22 @@ public class TelaAdmin extends JFrame {
 
         btnAprovar.addActionListener(e -> {
             int linha = tabelaPendentes.getSelectedRow();
-            if (linha >= 0) {
-                int idUsuario = (int) tabelaPendentes.getValueAt(linha, 0);
-                if (usuarioDAO.aprovarUsuario(idUsuario)) {
-                    JOptionPane.showMessageDialog(null, "Produtor aprovado!");
-                    atualizarTabelaProdutores();
-                }
+            int idUsuario = (linha >= 0) ? (int) tabelaPendentes.getValueAt(linha, 0) : -1;
+            
+            String resposta = controller.aprovarProdutor(idUsuario);
+            
+            if (resposta.equals("SUCESSO")) {
+                JOptionPane.showMessageDialog(this, "Produtor aprovado com sucesso!");
+                atualizarTabelaProdutores();
             } else {
-                JOptionPane.showMessageDialog(null, "Selecione um produtor.");
+                JOptionPane.showMessageDialog(this, resposta, "Aviso", JOptionPane.WARNING_MESSAGE);
             }
         });
         return painel;
     }
 
     private void atualizarTabelaProdutores() {
-        tabelaPendentes.setModel(usuarioDAO.listarProdutoresPendentes());
+        tabelaPendentes.setModel(controller.listarProdutoresPendentes());
     }
 
     // ==================== ABA 2: LOCAIS ====================
@@ -128,37 +120,25 @@ public class TelaAdmin extends JFrame {
         });
 
         btnLimpar.addActionListener(e -> limparLocal());
-        btnSalvar.addActionListener(e -> {
-            try {
-                if (localDAO.inserir(montarLocal())) { limparLocal(); atualizarTabelaLocais(); }
-            } catch (Exception ex) { JOptionPane.showMessageDialog(null, "Erro nos dados."); }
-        });
-        btnAtualizar.addActionListener(e -> {
-            try {
-                LocalEvento loc = montarLocal(); loc.setIdLocal(Integer.parseInt(txtIdLocal.getText()));
-                if (localDAO.atualizar(loc)) { limparLocal(); atualizarTabelaLocais(); }
-            } catch (Exception ex) {}
-        });
-        btnExcluir.addActionListener(e -> {
-            if (!txtIdLocal.getText().isEmpty() && localDAO.excluir(Integer.parseInt(txtIdLocal.getText()))) {
-                limparLocal(); atualizarTabelaLocais();
-            }
-        });
+        btnSalvar.addActionListener(e -> acaoLocal("SALVAR"));
+        btnAtualizar.addActionListener(e -> acaoLocal("ATUALIZAR"));
+        btnExcluir.addActionListener(e -> acaoLocal("EXCLUIR"));
+        
         return painel;
     }
 
-    private LocalEvento montarLocal() {
-        LocalEvento l = new LocalEvento();
-        l.setNome(txtNomeLocal.getText()); l.setEndereco(txtEndereco.getText());
-        l.setLatitude(new BigDecimal(txtLat.getText().replace(",", ".")));
-        l.setLongitude(new BigDecimal(txtLon.getText().replace(",", ".")));
-        return l;
+    private void acaoLocal(String acao) {
+        String resposta = controller.processarLocal(acao, txtIdLocal.getText(), txtNomeLocal.getText(), txtEndereco.getText(), txtLat.getText(), txtLon.getText());
+        processarResposta(resposta, this::limparLocal, this::atualizarTabelaLocais);
     }
 
     private void limparLocal() { txtIdLocal.setText(""); txtNomeLocal.setText(""); txtEndereco.setText(""); txtLat.setText(""); txtLon.setText(""); }
+    
     private void atualizarTabelaLocais() {
         modeloTabelaLocais.setRowCount(0);
-        for (LocalEvento l : localDAO.listarTodos()) modeloTabelaLocais.addRow(new Object[]{l.getIdLocal(), l.getNome(), l.getEndereco(), l.getLatitude(), l.getLongitude()});
+        for (LocalEvento l : controller.listarLocais()) {
+            modeloTabelaLocais.addRow(new Object[]{l.getIdLocal(), l.getNome(), l.getEndereco(), l.getLatitude(), l.getLongitude()});
+        }
     }
 
     // ==================== ABA 3: SITES ====================
@@ -201,25 +181,25 @@ public class TelaAdmin extends JFrame {
         });
 
         btnLimpar.addActionListener(e -> limparSite());
-        btnSalvar.addActionListener(e -> {
-            SiteVendas s = new SiteVendas(); s.setNome(txtNomeSite.getText()); s.setUrlBase(txtUrlBase.getText());
-            if (siteDAO.inserir(s)) { limparSite(); atualizarTabelaSites(); }
-        });
-        btnAtualizar.addActionListener(e -> {
-            if (txtIdSite.getText().isEmpty()) return;
-            SiteVendas s = new SiteVendas(); s.setIdSite(Integer.parseInt(txtIdSite.getText())); s.setNome(txtNomeSite.getText()); s.setUrlBase(txtUrlBase.getText());
-            if (siteDAO.atualizar(s)) { limparSite(); atualizarTabelaSites(); }
-        });
-        btnExcluir.addActionListener(e -> {
-            if (!txtIdSite.getText().isEmpty() && siteDAO.excluir(Integer.parseInt(txtIdSite.getText()))) { limparSite(); atualizarTabelaSites(); }
-        });
+        btnSalvar.addActionListener(e -> acaoSite("SALVAR"));
+        btnAtualizar.addActionListener(e -> acaoSite("ATUALIZAR"));
+        btnExcluir.addActionListener(e -> acaoSite("EXCLUIR"));
+        
         return painel;
     }
 
+    private void acaoSite(String acao) {
+        String resposta = controller.processarSite(acao, txtIdSite.getText(), txtNomeSite.getText(), txtUrlBase.getText());
+        processarResposta(resposta, this::limparSite, this::atualizarTabelaSites);
+    }
+
     private void limparSite() { txtIdSite.setText(""); txtNomeSite.setText(""); txtUrlBase.setText(""); }
+    
     private void atualizarTabelaSites() {
         modeloTabelaSites.setRowCount(0);
-        for (SiteVendas s : siteDAO.listarTodos()) modeloTabelaSites.addRow(new Object[]{s.getIdSite(), s.getNome(), s.getUrlBase()});
+        for (SiteVendas s : controller.listarSites()) {
+            modeloTabelaSites.addRow(new Object[]{s.getIdSite(), s.getNome(), s.getUrlBase()});
+        }
     }
 
     // ==================== ABA 4: CATEGORIAS ====================
@@ -258,28 +238,38 @@ public class TelaAdmin extends JFrame {
         });
 
         btnLimpar.addActionListener(e -> limparCateg());
-        btnSalvar.addActionListener(e -> {
-            Categoria c = new Categoria(); c.setNomeCategoria(txtNomeCateg.getText());
-            if (categoriaDAO.inserir(c)) { limparCateg(); atualizarTabelaCategorias(); }
-        });
-        btnAtualizar.addActionListener(e -> {
-            if (txtIdCateg.getText().isEmpty()) return;
-            Categoria c = new Categoria(); c.setIdCateg(Integer.parseInt(txtIdCateg.getText())); c.setNomeCategoria(txtNomeCateg.getText());
-            if (categoriaDAO.atualizar(c)) { limparCateg(); atualizarTabelaCategorias(); }
-        });
-        btnExcluir.addActionListener(e -> {
-            if (!txtIdCateg.getText().isEmpty() && categoriaDAO.excluir(Integer.parseInt(txtIdCateg.getText()))) { limparCateg(); atualizarTabelaCategorias(); }
-        });
+        btnSalvar.addActionListener(e -> acaoCategoria("SALVAR"));
+        btnAtualizar.addActionListener(e -> acaoCategoria("ATUALIZAR"));
+        btnExcluir.addActionListener(e -> acaoCategoria("EXCLUIR"));
+        
         return painel;
     }
 
-    private void limparCateg() { txtIdCateg.setText(""); txtNomeCateg.setText(""); }
-    private void atualizarTabelaCategorias() {
-        modeloTabelaCategorias.setRowCount(0);
-        for (Categoria c : categoriaDAO.listarTodas()) modeloTabelaCategorias.addRow(new Object[]{c.getIdCateg(), c.getNomeCategoria()});
+    private void acaoCategoria(String acao) {
+        String resposta = controller.processarCategoria(acao, txtIdCateg.getText(), txtNomeCateg.getText());
+        processarResposta(resposta, this::limparCateg, this::atualizarTabelaCategorias);
     }
 
-    // Métodos Utilitários Visuais
+    private void limparCateg() { txtIdCateg.setText(""); txtNomeCateg.setText(""); }
+    
+    private void atualizarTabelaCategorias() {
+        modeloTabelaCategorias.setRowCount(0);
+        for (Categoria c : controller.listarCategorias()) {
+            modeloTabelaCategorias.addRow(new Object[]{c.getIdCateg(), c.getNomeCategoria()});
+        }
+    }
+
+    // ==================== UTILITÁRIOS ====================
+    private void processarResposta(String resposta, Runnable limpar, Runnable atualizar) {
+        if (resposta.startsWith("ERRO")) {
+            JOptionPane.showMessageDialog(this, resposta, "Atenção", JOptionPane.ERROR_MESSAGE);
+        } else {
+            JOptionPane.showMessageDialog(this, "Operação realizada com sucesso!");
+            limpar.run();
+            atualizar.run();
+        }
+    }
+
     private JLabel criarLabel(String txt, int x, int y, int w, int h) { JLabel l = new JLabel(txt); l.setBounds(x, y, w, h); return l; }
     private JTextField criarTextField(int x, int y, int w, int h, JPanel p, boolean editavel) { JTextField t = new JTextField(); t.setBounds(x, y, w, h); t.setEditable(editavel); p.add(t); return t; }
     private JButton criarBotao(String txt, int x, int y, int w, int h, JPanel p) { JButton b = new JButton(txt); b.setBounds(x, y, w, h); p.add(b); return b; }

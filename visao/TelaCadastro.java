@@ -1,6 +1,6 @@
 package visao;
 
-import dao.CadastroDAO;
+import controle.CadastroController;
 import javax.swing.*;
 import java.awt.event.ItemEvent;
 
@@ -8,6 +8,9 @@ public class TelaCadastro extends JFrame {
     private JTextField txtEmail, txtCpf, txtCnpj, txtRazao, txtFantasia;
     private JPasswordField txtSenha;
     private JComboBox<String> cbTipo;
+    
+    // A tela agora conhece apenas o Controller, e nunca o DAO
+    private CadastroController controller = new CadastroController();
 
     public TelaCadastro() {
         setTitle("ABase - Criar Nova Conta");
@@ -26,18 +29,15 @@ public class TelaCadastro extends JFrame {
         add(criarLabel("E-mail:", xL, 60, 100, alt));
         txtEmail = criarTextField(xT, 60, 200, alt, this);
 
-        // Aviso visual da regra no próprio campo
         add(criarLabel("Senha (mín 6 carac.):", xL, 100, 130, alt));
         txtSenha = new JPasswordField();
         txtSenha.setBounds(xT, 100, 200, alt);
         add(txtSenha);
 
-        // Cliente
         JLabel lblCpf = criarLabel("CPF (11 dígitos):", xL, 140, 120, alt);
         add(lblCpf);
         txtCpf = criarTextField(xT, 140, 200, alt, this);
 
-        // Produtor
         JLabel lblCnpj = criarLabel("CNPJ (14 dígitos):", xL, 140, 120, alt);
         add(lblCnpj);
         txtCnpj = criarTextField(xT, 140, 200, alt, this);
@@ -63,7 +63,29 @@ public class TelaCadastro extends JFrame {
         btnSalvar.setBounds(140, 300, 160, 35);
         add(btnSalvar);
 
-        btnSalvar.addActionListener(e -> processarCadastro());
+        // AÇÃO DO BOTÃO: Apenas delega a tarefa para o Controller
+        btnSalvar.addActionListener(e -> {
+            String tipo = (String) cbTipo.getSelectedItem();
+            String email = txtEmail.getText().trim();
+            String senha = new String(txtSenha.getPassword());
+            String cpf = txtCpf.getText().trim();
+            String cnpj = txtCnpj.getText().trim();
+            String razao = txtRazao.getText().trim();
+            String fantasia = txtFantasia.getText().trim();
+
+            String resposta = controller.registrarUsuario(tipo, email, senha, cpf, cnpj, razao, fantasia);
+
+            if (resposta.equals("SUCESSO_PRODUTOR")) {
+                JOptionPane.showMessageDialog(this, "Cadastro realizado! Aguarde a liberação do Administrador.");
+                this.dispose();
+            } else if (resposta.equals("SUCESSO_CLIENTE")) {
+                JOptionPane.showMessageDialog(this, "Cadastro realizado! Faça o seu login.");
+                this.dispose();
+            } else {
+                // Se não for sucesso, a resposta é a própria mensagem de erro gerada pelo Controller
+                JOptionPane.showMessageDialog(this, resposta, "Validação", JOptionPane.ERROR_MESSAGE);
+            }
+        });
     }
 
     private void alternarCamposVisiveis(boolean isProd, JLabel lCnpj, JLabel lRazao, JLabel lFan, JLabel lCpf) {
@@ -71,76 +93,6 @@ public class TelaCadastro extends JFrame {
         lRazao.setVisible(isProd); txtRazao.setVisible(isProd);
         lFan.setVisible(isProd); txtFantasia.setVisible(isProd);
         lCpf.setVisible(!isProd); txtCpf.setVisible(!isProd);
-    }
-
-    // ==========================================
-    // BARREIRA DE BLINDAGEM DE DADOS
-    // ==========================================
-    private boolean validarCampos() {
-        String email = txtEmail.getText().trim();
-        String senha = new String(txtSenha.getPassword());
-        boolean isProdutor = cbTipo.getSelectedItem().equals("Produtor");
-
-        if (email.isEmpty() || !email.contains("@") || !email.contains(".")) {
-            JOptionPane.showMessageDialog(this, "Erro: Introduza um e-mail válido contendo '@' e domínio.", "Validação", JOptionPane.ERROR_MESSAGE);
-            return false;
-        }
-
-        if (senha.length() < 6) {
-            JOptionPane.showMessageDialog(this, "Erro: A palavra-passe deve ter no mínimo 6 caracteres.", "Validação", JOptionPane.ERROR_MESSAGE);
-            return false;
-        }
-
-        if (isProdutor) {
-            String cnpj = txtCnpj.getText().replaceAll("[^0-9]", ""); // Mantém apenas os números
-            if (cnpj.length() != 14) {
-                JOptionPane.showMessageDialog(this, "Erro: O CNPJ deve conter exatamente 14 dígitos numéricos.", "Validação", JOptionPane.ERROR_MESSAGE);
-                return false;
-            }
-            if (txtRazao.getText().trim().isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Erro: A Razão Social é obrigatória para o Produtor.", "Validação", JOptionPane.ERROR_MESSAGE);
-                return false;
-            }
-            if (txtFantasia.getText().trim().isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Erro: O Nome Fantasia é obrigatório.", "Validação", JOptionPane.ERROR_MESSAGE);
-                return false;
-            }
-        } else {
-            String cpf = txtCpf.getText().replaceAll("[^0-9]", ""); // Mantém apenas os números
-            if (cpf.length() != 11) {
-                JOptionPane.showMessageDialog(this, "Erro: O CPF deve conter exatamente 11 dígitos numéricos.", "Validação", JOptionPane.ERROR_MESSAGE);
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private void processarCadastro() {
-        if (!validarCampos()) return; // Interrompe o processo se a validação falhar
-
-        String email = txtEmail.getText().trim();
-        String senha = new String(txtSenha.getPassword());
-        boolean isProdutor = cbTipo.getSelectedItem().equals("Produtor");
-        CadastroDAO dao = new CadastroDAO();
-        boolean sucesso;
-
-        if (isProdutor) {
-            // Envia para o banco o CNPJ já purificado de traços e pontos
-            String cnpjLimpo = txtCnpj.getText().replaceAll("[^0-9]", "");
-            sucesso = dao.cadastrarProdutor(email, senha, cnpjLimpo, txtRazao.getText().trim(), txtFantasia.getText().trim());
-        } else {
-            // Envia para o banco o CPF purificado
-            String cpfLimpo = txtCpf.getText().replaceAll("[^0-9]", "");
-            sucesso = dao.cadastrarCliente(email, senha, cpfLimpo);
-        }
-
-        if (sucesso) {
-            String msg = isProdutor ? "Cadastro realizado! Aguarde a liberação do Administrador." : "Cadastro realizado! Faça o seu login.";
-            JOptionPane.showMessageDialog(this, msg);
-            this.dispose(); 
-        } else {
-            JOptionPane.showMessageDialog(this, "Falha na base de dados. O E-mail, CPF ou CNPJ introduzido já existe no sistema.", "Atenção", JOptionPane.ERROR_MESSAGE);
-        }
     }
 
     private JLabel criarLabel(String txt, int x, int y, int w, int h) { JLabel l = new JLabel(txt); l.setBounds(x, y, w, h); return l; }

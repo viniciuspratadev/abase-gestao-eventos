@@ -1,97 +1,92 @@
 package visao;
 
-import dao.UsuarioDAO;
-import util.SessaoAtual;
-
+import controle.LoginController;
 import javax.swing.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 public class TelaLogin extends JFrame {
-
+    
     private JTextField txtEmail;
     private JPasswordField txtSenha;
-    private JButton btnEntrar;
-    private JButton btnCadastrar;
+    
+    // A tela agora conhece apenas o Controller
+    private LoginController controller = new LoginController();
 
     public TelaLogin() {
-        setTitle("ABase - Login");
-        setSize(320, 200); // Largura expandida para acomodar os dois botões
+        setTitle("ABase - Acesso ao Sistema");
+        setSize(400, 300);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLocationRelativeTo(null); // Centraliza na tela
-        setLayout(null); // Layout absoluto (manual)
+        setLocationRelativeTo(null);
+        setLayout(null);
 
-        JLabel lblEmail = new JLabel("E-mail:");
-        lblEmail.setBounds(30, 20, 80, 25);
-        add(lblEmail);
+        int alt = 25;
 
-        txtEmail = new JTextField();
-        txtEmail.setBounds(90, 20, 180, 25); // Caixas de texto ajustadas
-        add(txtEmail);
+        add(criarLabel("E-mail:", 50, 40, 80, alt));
+        txtEmail = criarTextField(120, 40, 200, alt, this);
 
-        JLabel lblSenha = new JLabel("Senha:");
-        lblSenha.setBounds(30, 60, 80, 25);
-        add(lblSenha);
-
+        add(criarLabel("Senha:", 50, 80, 80, alt));
         txtSenha = new JPasswordField();
-        txtSenha.setBounds(90, 60, 180, 25);
+        txtSenha.setBounds(120, 80, 200, alt);
         add(txtSenha);
 
-        // Botão Entrar deslocado para a esquerda
-        btnEntrar = new JButton("Entrar");
-        btnEntrar.setBounds(40, 100, 100, 30);
+        JButton btnEntrar = new JButton("Entrar");
+        btnEntrar.setBounds(120, 130, 100, 30);
         add(btnEntrar);
 
-        // Novo botão de Cadastro posicionado à direita
-        btnCadastrar = new JButton("Criar Conta");
-        btnCadastrar.setBounds(160, 100, 110, 30); 
-        add(btnCadastrar);
+        JLabel lblCriarConta = new JLabel("<html><u>Não tem conta? Criar nova</u></html>");
+        lblCriarConta.setBounds(120, 180, 200, alt);
+        lblCriarConta.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        add(lblCriarConta);
 
-        btnEntrar.addActionListener(new ActionListener() {
+        // AÇÃO DO BOTÃO: Entrega a validação ao Controller e reage à resposta
+        btnEntrar.addActionListener(e -> {
+            String email = txtEmail.getText().trim();
+            String senha = new String(txtSenha.getPassword());
+
+            String resposta = controller.autenticar(email, senha);
+
+            switch (resposta) {
+                case "ERRO_VAZIO":
+                    JOptionPane.showMessageDialog(this, "Por favor, preencha o e-mail e a senha.", "Aviso", JOptionPane.WARNING_MESSAGE);
+                    break;
+                case "ERRO_CREDENCIAIS":
+                    JOptionPane.showMessageDialog(this, "E-mail não encontrado ou senha incorreta.", "Acesso Negado", JOptionPane.ERROR_MESSAGE);
+                    break;
+                case "PRODUTOR_PENDENTE":
+                    JOptionPane.showMessageDialog(this, "A sua conta de Produtor ainda aguarda a liberação do Administrador.", "Aviso", JOptionPane.INFORMATION_MESSAGE);
+                    break;
+                case "ADMIN":
+                    new TelaAdmin().setVisible(true);
+                    this.dispose();
+                    break;
+                case "CLIENTE":
+                    new TelaCliente().setVisible(true);
+                    this.dispose();
+                    break;
+                case "PRODUTOR_APROVADO":
+                    new TelaProdutor().setVisible(true);
+                    this.dispose();
+                    break;
+                default:
+                    JOptionPane.showMessageDialog(this, "Erro estrutural crítico ao tentar validar o utilizador.", "Erro", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        // AÇÃO DO TEXTO: Abre o Cadastro
+        lblCriarConta.addMouseListener(new MouseAdapter() {
             @Override
-            public void actionPerformed(ActionEvent e) {
-                tentarLogin();
+            public void mouseClicked(MouseEvent e) {
+                new TelaCadastro().setVisible(true);
             }
-        });
-
-        // Ação para abrir a nova tela de cadastro
-        btnCadastrar.addActionListener(e -> {
-            new TelaCadastro().setVisible(true);
         });
     }
 
-    private void tentarLogin() {
-        String email = txtEmail.getText();
-        String senha = new String(txtSenha.getPassword());
-
-        UsuarioDAO dao = new UsuarioDAO();
-        boolean sucesso = dao.autenticar(email, senha);
-
-        if (sucesso) {
-            this.dispose(); // Fecha a tela de login
-            
-            // Redireciona de acordo com o papel do usuário
-            if (SessaoAtual.tipoUsuarioLogado.equals("admin")) {
-                new TelaAdmin().setVisible(true);
-            } else if (SessaoAtual.tipoUsuarioLogado.equals("produtor")) {
-                new TelaProdutor().setVisible(true);
-            } else if (SessaoAtual.tipoUsuarioLogado.equals("cliente")) {
-                new TelaCliente().setVisible(true);
-            } else {
-                JOptionPane.showMessageDialog(this, "Painel em desenvolvimento para: " + SessaoAtual.tipoUsuarioLogado);
-            }
-        } else {
-            JOptionPane.showMessageDialog(this, "Credenciais inválidas ou acesso não aprovado.", "Erro de Login", JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
-    // Ponto de partida da interface
+    private JLabel criarLabel(String txt, int x, int y, int w, int h) { JLabel l = new JLabel(txt); l.setBounds(x, y, w, h); return l; }
+    private JTextField criarTextField(int x, int y, int w, int h, JFrame f) { JTextField t = new JTextField(); t.setBounds(x, y, w, h); f.add(t); return t; }
+    
+    // Método Main embutido para inicialização (Padrão Swing)
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                new TelaLogin().setVisible(true);
-            }
-        });
+        SwingUtilities.invokeLater(() -> new TelaLogin().setVisible(true));
     }
 }

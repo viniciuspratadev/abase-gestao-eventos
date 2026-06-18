@@ -1,8 +1,6 @@
 package visao;
 
-import dao.ClienteDAO;
-import modelo.Avaliacao;
-import util.GeolocalizacaoAPI;
+import controle.ClienteController;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -10,14 +8,13 @@ import java.awt.BorderLayout;
 import java.awt.Desktop;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.math.BigDecimal;
 import java.net.URI;
-import java.util.Comparator;
 import java.util.List;
 
 public class TelaCliente extends JFrame {
 
-    private ClienteDAO dao = new ClienteDAO();
+    // A tela conhece unicamente o seu controlador
+    private ClienteController controller = new ClienteController();
 
     // Aba 1: Explorar
     private JTable tabelaExplorar;
@@ -76,7 +73,7 @@ public class TelaCliente extends JFrame {
         btnRegistrarCompra.setBounds(230, 460, 230, 35);
         painel.add(btnRegistrarCompra);
 
-        atualizarEventosExplorar(null, null);
+        atualizarEventosExplorar(null); // Carrega padrão inicial
 
         tabelaExplorar.addMouseListener(new MouseAdapter() {
             @Override
@@ -84,67 +81,41 @@ public class TelaCliente extends JFrame {
                 int l = tabelaExplorar.getSelectedRow();
                 if (l >= 0) {
                     idEventoSelecionado = (int) modeloExplorar.getValueAt(l, 0);
-                    urlSelecionada = modeloExplorar.getValueAt(l, 6).toString(); // A coluna 6 agora é a URL
+                    urlSelecionada = modeloExplorar.getValueAt(l, 6).toString();
                 }
             }
         });
+
+        btnBuscar.addActionListener(e -> atualizarEventosExplorar(txtBuscaEndereco.getText()));
+
         btnSite.addActionListener(e -> {
             if (urlSelecionada == null || urlSelecionada.isEmpty()) {
-                JOptionPane.showMessageDialog(null, "Selecione um evento na tabela primeiro.");
+                JOptionPane.showMessageDialog(this, "Selecione um evento na tabela primeiro.");
                 return;
             }
-            try {
-                // Chama o navegador padrão do Windows/Linux/Mac
-                Desktop.getDesktop().browse(new URI(urlSelecionada));
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(null, "Erro ao abrir o navegador. Verifique se a URL é válida.");
-            }
-        });
-
-        btnBuscar.addActionListener(e -> {
-            String endereco = txtBuscaEndereco.getText();
-            if (endereco.isEmpty()) return;
-            
-            BigDecimal[] coords = GeolocalizacaoAPI.buscarCoordenadas(endereco);
-            if (coords != null) {
-                atualizarEventosExplorar(coords[0], coords[1]);
-            } else {
-                JOptionPane.showMessageDialog(null, "Não foi possível localizar este endereço.");
-            }
+            try { Desktop.getDesktop().browse(new URI(urlSelecionada)); } 
+            catch (Exception ex) { JOptionPane.showMessageDialog(this, "Erro ao abrir o navegador."); }
         });
 
         btnRegistrarCompra.addActionListener(e -> {
-            if (idEventoSelecionado != -1 && dao.comprarIngresso(idEventoSelecionado)) {
-                JOptionPane.showMessageDialog(null, "Ingresso registrado na sua conta!");
+            String resposta = controller.registrarCompra(idEventoSelecionado);
+            if (resposta.equals("SUCESSO")) {
+                JOptionPane.showMessageDialog(this, "Ingresso registrado na sua conta!");
                 idEventoSelecionado = -1;
-                atualizarEventosExplorar(null, null);
+                atualizarEventosExplorar(null);
                 atualizarMeusEventos();
             } else {
-                JOptionPane.showMessageDialog(null, "Selecione um evento primeiro.");
+                JOptionPane.showMessageDialog(this, resposta, "Aviso", JOptionPane.WARNING_MESSAGE);
             }
         });
 
         return painel;
     }
 
-    private void atualizarEventosExplorar(BigDecimal latCliente, BigDecimal lonCliente) {
+    private void atualizarEventosExplorar(String endereco) {
         modeloExplorar.setRowCount(0);
-        List<Object[]> eventos = dao.listarEventosExplorar();
-
-        if (latCliente != null && lonCliente != null) {
-            // Calcula a distância em KM usando a Fórmula de Haversine
-            for (Object[] ev : eventos) {
-                BigDecimal latEv = (BigDecimal) ev[5];
-                BigDecimal lonEv = (BigDecimal) ev[6];
-                double dist = calcularDistancia(latCliente.doubleValue(), lonCliente.doubleValue(), latEv.doubleValue(), lonEv.doubleValue());
-                ev[5] = String.format("%.2f", dist); // Substitui a latitude pela distância formatada
-            }
-            // Ordena a lista do mais perto pro mais longe
-            eventos.sort(Comparator.comparingDouble(o -> Double.parseDouble(((String) o[5]).replace(",", "."))));
-        } else {
-            for (Object[] ev : eventos) ev[5] = "Desconhecida";
-        }
-
+        // O controlador faz todo o cálculo pesado e devolve a lista pronta
+        List<Object[]> eventos = controller.explorarEventos(endereco);
         for (Object[] ev : eventos) {
             modeloExplorar.addRow(new Object[]{ev[0], ev[1], ev[2], ev[3], ev[4], ev[5], ev[7]});
         }
@@ -178,29 +149,15 @@ public class TelaCliente extends JFrame {
         });
 
         btnCheckin.addActionListener(e -> {
-            if (idMeusEventosSelecionado == -1) {
-                JOptionPane.showMessageDialog(null, "Selecione um ingresso.");
-                return;
-            }
-            String end = txtLocalCheckin.getText();
-            if (end.isEmpty()) {
-                JOptionPane.showMessageDialog(null, "Informe o endereço atual para validar a geolocalização.");
-                return;
-            }
-
-            BigDecimal[] coords = GeolocalizacaoAPI.buscarCoordenadas(end);
-            if (coords != null) {
-                if (dao.fazerCheckin(idMeusEventosSelecionado, coords[0], coords[1])) {
-                    JOptionPane.showMessageDialog(null, "Check-in realizado com sucesso!");
-                    idMeusEventosSelecionado = -1;
-                    txtLocalCheckin.setText("");
-                    atualizarMeusEventos();
-                    atualizarAvaliacoes();
-                } else {
-                    JOptionPane.showMessageDialog(null, "Erro ao processar check-in.");
-                }
+            String resposta = controller.realizarCheckin(idMeusEventosSelecionado, txtLocalCheckin.getText());
+            if (resposta.equals("SUCESSO")) {
+                JOptionPane.showMessageDialog(this, "Check-in realizado com sucesso!");
+                idMeusEventosSelecionado = -1;
+                txtLocalCheckin.setText("");
+                atualizarMeusEventos();
+                atualizarAvaliacoes();
             } else {
-                JOptionPane.showMessageDialog(null, "Endereço atual não localizado pelo sistema de GPS.");
+                JOptionPane.showMessageDialog(this, resposta, "Atenção", JOptionPane.ERROR_MESSAGE);
             }
         });
 
@@ -209,7 +166,7 @@ public class TelaCliente extends JFrame {
 
     private void atualizarMeusEventos() {
         modeloMeusEventos.setRowCount(0);
-        for (Object[] linha : dao.listarMeusEventos()) modeloMeusEventos.addRow(linha);
+        for (Object[] linha : controller.listarMeusEventos()) modeloMeusEventos.addRow(linha);
     }
 
     // ==================== ABA 3: AVALIAÇÕES ====================
@@ -251,18 +208,14 @@ public class TelaCliente extends JFrame {
         });
 
         btnAvaliar.addActionListener(e -> {
-            try {
-                Avaliacao aval = new Avaliacao();
-                aval.setIdCheckin(Integer.parseInt(txtIdCheckin.getText()));
-                aval.setNota(Integer.parseInt(txtNota.getText()));
-                aval.setComentario(txtComentario.getText());
-                
-                if (dao.avaliar(aval)) {
-                    JOptionPane.showMessageDialog(null, "Avaliação registrada!");
-                    txtIdCheckin.setText(""); txtNota.setText(""); txtComentario.setText("");
-                    atualizarAvaliacoes();
-                }
-            } catch (Exception ex) { JOptionPane.showMessageDialog(null, "Dados inválidos."); }
+            String resposta = controller.enviarAvaliacao(txtIdCheckin.getText(), txtNota.getText(), txtComentario.getText());
+            if (resposta.equals("SUCESSO")) {
+                JOptionPane.showMessageDialog(this, "Avaliação registrada!");
+                txtIdCheckin.setText(""); txtNota.setText(""); txtComentario.setText("");
+                atualizarAvaliacoes();
+            } else {
+                JOptionPane.showMessageDialog(this, resposta, "Validação", JOptionPane.ERROR_MESSAGE);
+            }
         });
 
         return painel;
@@ -271,18 +224,10 @@ public class TelaCliente extends JFrame {
     private void atualizarAvaliacoes() {
         if (modeloCheckins == null) return;
         modeloCheckins.setRowCount(0);
-        for (Object[] linha : dao.listarCheckinsPendentesDeAvaliacao()) modeloCheckins.addRow(linha);
+        for (Object[] linha : controller.listarAvaliacoesPendentes()) modeloCheckins.addRow(linha);
     }
 
-    // Utilitários Visuais e Matemáticos
+    // Utilitários Visuais
     private JLabel criarLabel(String txt, int x, int y, int w, int h) { JLabel l = new JLabel(txt); l.setBounds(x, y, w, h); return l; }
     private JTextField criarTextField(int x, int y, int w, int h, JPanel p, boolean editavel) { JTextField t = new JTextField(); t.setBounds(x, y, w, h); t.setEditable(editavel); p.add(t); return t; }
-
-    private double calcularDistancia(double lat1, double lon1, double lat2, double lon2) {
-        int R = 6371; // Raio da terra em KM
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLon = Math.toRadians(lon2 - lon1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-    }
 }
